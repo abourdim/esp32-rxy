@@ -81,6 +81,13 @@ The widget IDs you used in the Build tab (`btn_fire`, `slider_speed`, …)
 are the same IDs that arrive in `SET` messages, so the kid handles them
 by name in `handleWidget()`.
 
+**No firmware editing needed to get started.** `handleWidget()` already
+has a working example for every widget type — buttons, sliders, toggles,
+joystick, D-pad, XY pad, and timer all drive the on-board LED and print
+what they received to Serial. Add any widget of any of these types in
+the Build tab, re-upload, and it just works — a good way to see the
+value format for each widget type before writing real project logic.
+
 ## Protocol summary
 
 | Direction       | Message                  | Example                  |

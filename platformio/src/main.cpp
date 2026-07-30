@@ -17,9 +17,13 @@
  *        const CFG = "..."
  *     Copy the long base64 string.
  *  3. Paste it into LAYOUT_CFG_BASE64 below, replacing the default.
- *  4. Fill in your widget logic in handleWidget().
- *  5. Upload to the ESP32, then in the rxy "Play" tab click "📡 Connect"
- *     and pick "BBC micro:bit ESP32" from the chooser.
+ *  4. Upload to the ESP32, then in the rxy "Play" tab click "📡 Connect"
+ *     and pick "BBC micro:bit ESP32" from the chooser. Every widget type
+ *     already has a working demo built into handleWidget() below (they
+ *     all drive the on-board LED and print to Serial), so try your
+ *     layout first — no C++ required yet.
+ *  5. Once you wire up real hardware, replace the matching demo in
+ *     handleWidget() with your own logic.
  *
  * PROTOCOL (reverse-audited from rxy script.js)
  * ---------------------------------------------
@@ -326,65 +330,89 @@ static void handleLine(const String& line) {
 //   sendValue("label_score", "Score: 42");
 //   sendValue("graph_data",  "12,7,18");
 //   sendValue("battery_lvl", "75");
+//
+// EVERY widget type below already does something with the one actuator
+// this board has out of the box (the on-board LED) and prints what it
+// received to Serial. Add ANY widget of that type in the rxy Build tab
+// (any id, any name) and it works immediately — no firmware edit needed.
+// Once you wire up real hardware (motors, sensors, extra LEDs...),
+// replace the body of the matching "if" with your own logic; the
+// id/val parsing above each one can stay exactly as-is.
+
+// Sets LED_PIN's brightness from a 0..100 percentage, accounting for the
+// C3 Super Mini's on-board LED being active-LOW (0 = full brightness).
+static inline void setLedPercent(int pct) {
+  pct = constrain(pct, 0, 100);
+  int duty = map(pct, 0, 100, 0, 255);
+  analogWrite(LED_PIN, LED_ON == LOW ? 255 - duty : duty);
+}
 
 static void handleWidget(const String& id, const String& val) {
 
-  // ------- Example: built-in LED follows the "Test" button -------------
+  // ------- Built-in demo: the shipped default layout's "Test" button ---
   if (id == "btn_test") {
     digitalWrite(LED_PIN, val == "1" ? LED_ON : LED_OFF);
     return;
   }
 
-  // ------- Buttons -----------------------------------------------------
-  // if (id == "btn_fire" && val == "1") { /* fire! */ }
+  // ------- Buttons: LED on while held, off on release -------------------
+  if (id.startsWith("btn_")) {
+    digitalWrite(LED_PIN, val == "1" ? LED_ON : LED_OFF);
+    Serial.printf("[WIDGET] button   '%s' %s\n", id.c_str(), val == "1" ? "pressed" : "released");
+    return;
+  }
 
-  // ------- Sliders -----------------------------------------------------
-  // if (id == "slider_speed") {
-  //   int s = val.toInt();          // 0..100 by default
-  //   analogWrite(MOTOR_PIN, s * 255 / 100);
-  //   return;
-  // }
+  // ------- Sliders: LED brightness follows the slider --------------------
+  if (id.startsWith("slider_")) {
+    int pct = val.toInt();               // 0..100 by default
+    setLedPercent(pct);
+    Serial.printf("[WIDGET] slider   '%s' = %d\n", id.c_str(), pct);
+    return;
+  }
 
-  // ------- Toggles -----------------------------------------------------
-  // if (id == "toggle_turbo") {
-  //   bool on = (val == "1");
-  //   ...
-  //   return;
-  // }
+  // ------- Toggles: LED on/off, stays put until toggled again -----------
+  if (id.startsWith("toggle_")) {
+    digitalWrite(LED_PIN, val == "1" ? LED_ON : LED_OFF);
+    Serial.printf("[WIDGET] toggle   '%s' = %s\n", id.c_str(), val == "1" ? "ON" : "OFF");
+    return;
+  }
 
-  // ------- Joystick: "angle distance" ----------------------------------
-  // if (id == "joy_move") {
-  //   int sp = val.indexOf(' ');
-  //   int angle = val.substring(0, sp).toInt();
-  //   int dist  = val.substring(sp + 1).toInt();
-  //   ...
-  //   return;
-  // }
+  // ------- Joystick: "<angle> <distance>" — LED brightens as you push ---
+  if (id.startsWith("joy_")) {
+    int sp    = val.indexOf(' ');
+    int angle = val.substring(0, sp).toInt();
+    int dist  = val.substring(sp + 1).toInt();   // 0..100, how far from center
+    setLedPercent(dist);
+    Serial.printf("[WIDGET] joystick '%s' angle=%d dist=%d\n", id.c_str(), angle, dist);
+    return;
+  }
 
-  // ------- D-Pad: "direction state" ------------------------------------
-  // if (id == "dpad_nav") {
-  //   int sp = val.indexOf(' ');
-  //   String dir = val.substring(0, sp);          // "up" | "down" | "left" | "right"
-  //   bool  down = val.substring(sp + 1) == "1";
-  //   ...
-  //   return;
-  // }
+  // ------- D-Pad: "<direction> <0|1>" — LED on while any key is held -----
+  if (id.startsWith("dpad_")) {
+    int sp     = val.indexOf(' ');
+    String dir = val.substring(0, sp);          // "up" | "down" | "left" | "right"
+    bool  down = val.substring(sp + 1) == "1";
+    digitalWrite(LED_PIN, down ? LED_ON : LED_OFF);
+    Serial.printf("[WIDGET] dpad     '%s' %s %s\n", id.c_str(), dir.c_str(), down ? "pressed" : "released");
+    return;
+  }
 
-  // ------- XY Pad: "x y" (0..100 each) ---------------------------------
-  // if (id == "xypad_aim") {
-  //   int sp = val.indexOf(' ');
-  //   int x = val.substring(0, sp).toInt();
-  //   int y = val.substring(sp + 1).toInt();
-  //   ...
-  //   return;
-  // }
+  // ------- XY Pad: "<x> <y>" (0..100 each) — LED brightness follows y ----
+  if (id.startsWith("xypad_")) {
+    int sp = val.indexOf(' ');
+    int x  = val.substring(0, sp).toInt();
+    int y  = val.substring(sp + 1).toInt();
+    setLedPercent(y);
+    Serial.printf("[WIDGET] xypad    '%s' x=%d y=%d\n", id.c_str(), x, y);
+    return;
+  }
 
-  // ------- Timer: seconds elapsed --------------------------------------
-  // if (id == "timer_game") {
-  //   int secs = val.toInt();
-  //   ...
-  //   return;
-  // }
+  // ------- Timer: seconds elapsed — LED blinks once per tick -------------
+  if (id.startsWith("timer_")) {
+    digitalWrite(LED_PIN, digitalRead(LED_PIN) == LED_ON ? LED_OFF : LED_ON);
+    Serial.printf("[WIDGET] timer    '%s' = %ds\n", id.c_str(), val.toInt());
+    return;
+  }
 }
 
 // =====================================================================
