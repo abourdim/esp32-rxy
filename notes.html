@@ -66,7 +66,7 @@
 <h1>microbit-esp32-remote — project notes</h1>
 <p class="sub">
   ESP32 firmware that impersonates a BBC micro:bit so the unmodified
-  <a href="https://abourdim.github.io/rxy/">rxy</a> web app can drive it.
+  <a href="https://abourdim.github.io/bit-rxy/">rxy</a> web app can drive it.
   Last updated <span class="muted">2026-05-15</span>.
   Repo: <a href="https://github.com/abourdim/microbit-esp32-remote">abourdim/microbit-esp32-remote</a>.
 </p>
@@ -109,7 +109,7 @@
 
 <h2>2. BLE protocol — what rxy actually expects</h2>
 <p>
-  Verified against <code>abourdim/rxy@main:script.js</code> on 2026-05-15.
+  Verified against <code>abourdim/bit-rxy@main:script.js</code> on 2026-05-15.
 </p>
 
 <h3>2.1 UUIDs (Nordic-UART-style, with a twist)</h3>
@@ -232,8 +232,8 @@ pio device monitor -b 115200             # serial monitor</code></pre>
 
 <h2>9. Useful references</h2>
 <ul>
-  <li><a href="https://abourdim.github.io/rxy/">rxy web app</a></li>
-  <li><a href="https://github.com/abourdim/rxy">rxy source</a> — <code>script.js</code> for protocol audit</li>
+  <li><a href="https://abourdim.github.io/bit-rxy/">rxy web app</a></li>
+  <li><a href="https://github.com/abourdim/bit-rxy">rxy source</a> — <code>script.js</code> for protocol audit</li>
   <li><a href="https://github.com/h2zero/NimBLE-Arduino">NimBLE-Arduino</a> (≥ 2.x)</li>
   <li><a href="https://docs.platformio.org/page/boards/espressif32/esp32-c3-devkitm-1.html">PIO board: esp32-c3-devkitm-1</a></li>
 </ul>

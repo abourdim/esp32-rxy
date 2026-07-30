@@ -1,7 +1,7 @@
 # Micro:bit Remote — ESP32 firmware
 
 ESP32 firmware that speaks the same BLE protocol as a BBC micro:bit running
-the [rxy](https://abourdim.github.io/rxy/) MakeCode template. The unmodified
+the [rxy](https://abourdim.github.io/bit-rxy/) MakeCode template. The unmodified
 rxy web app can connect to an ESP32 and drive widgets exactly as it would
 a micro:bit.
 
@@ -55,7 +55,7 @@ USB-CDC build flags needed by the C3 Super Mini.
 ## First boot test
 
 1. Open Chrome or Edge on your phone/desktop (Web Bluetooth requires one of these).
-2. Go to https://abourdim.github.io/rxy/
+2. Go to https://abourdim.github.io/bit-rxy/
 3. Switch to the **Play** tab → tap **📡 Connect**.
 4. Pick **BBC micro:bit ESP32** from the chooser.
 5. You should see a single "Test" button appear. Tapping it toggles the

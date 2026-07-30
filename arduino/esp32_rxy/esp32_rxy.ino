@@ -3,7 +3,7 @@
  *
  * Speaks the same BLE protocol as a BBC micro:bit running the rxy
  * MakeCode template, so the unmodified web app at
- *   https://abourdim.github.io/rxy/
+ *   https://abourdim.github.io/bit-rxy/
  * can connect to an ESP32 and drive widgets exactly as it would a micro:bit.
  *
  * Target board: ESP32-C3 Super Mini (any ESP32 family chip with BLE works).
@@ -543,7 +543,7 @@ void setup() {
   Serial.printf("[BLE] advertising as: '%s'\n", BLE_DEVICE_NAME);
   Serial.printf("[BOOT] setup() OK   — free_heap=%lu bytes\n",
                 (unsigned long)ESP.getFreeHeap());
-  Serial.println("[BLE] Open https://abourdim.github.io/rxy/ and click Connect.");
+  Serial.println("[BLE] Open https://abourdim.github.io/bit-rxy/ and click Connect.");
   Serial.println("=================================================");
   Serial.flush();
 }
