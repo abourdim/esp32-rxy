@@ -81,12 +81,24 @@ The widget IDs you used in the Build tab (`btn_fire`, `slider_speed`, …)
 are the same IDs that arrive in `SET` messages, so the kid handles them
 by name in `handleWidget()`.
 
-**No firmware editing needed to get started.** `handleWidget()` already
-has a working example for every widget type — buttons, sliders, toggles,
-joystick, D-pad, XY pad, and timer all drive the on-board LED and print
-what they received to Serial. Add any widget of any of these types in
-the Build tab, re-upload, and it just works — a good way to see the
-value format for each widget type before writing real project logic.
+**No firmware editing needed to get started.** rxy has 12 widget types —
+7 inputs and 5 outputs — and every one already has a working example:
+
+- **Inputs** (app → firmware): `handleWidget()` matches button, slider,
+  toggle, joystick, D-pad, XY pad, and timer widgets by ID *prefix*, so
+  any widget of one of these types drives the on-board LED and prints
+  what it received to Serial, no matter what you name it.
+- **Outputs** (firmware → app): LED, Label, Gauge, Graph, and Battery
+  widgets don't send anything, so they can't be auto-matched. `loop()`
+  has a running demo ("Output widget demo") that pushes fake data to
+  `led_demo`, `label_demo`, `gauge_demo`, `graph_demo`, and
+  `battery_demo` once a second — add a widget of the matching type with
+  one of those exact IDs (or edit the strings in `loop()` to match
+  yours) to see it update live.
+
+Add any widget in the Build tab, re-upload, and it just works — a good
+way to see the value format for each widget type before writing real
+project logic.
 
 ## Protocol summary
 

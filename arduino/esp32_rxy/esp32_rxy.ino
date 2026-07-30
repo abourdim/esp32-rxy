@@ -331,7 +331,12 @@ static void handleLine(const String& line) {
 //   sendValue("graph_data",  "12,7,18");
 //   sendValue("battery_lvl", "75");
 //
-// EVERY widget type below already does something with the one actuator
+// A live, running example of all five is in loop() below (search for
+// "Output widget demo") — add an LED/Label/Gauge/Graph/Battery widget
+// with a matching *_demo ID in the Build tab to see it update once
+// connected.
+//
+// EVERY input widget type below already does something with the one actuator
 // this board has out of the box (the on-board LED) and prints what it
 // received to Serial. Add ANY widget of that type in the rxy Build tab
 // (any id, any name) and it works immediately — no firmware edit needed.
@@ -578,13 +583,26 @@ void loop() {
   }
 
   // -----------------------------------------------------------------
-  // Periodic update example. Uncomment + adapt for your project.
-  // The rxy web app rate-limits incoming messages to one per 200 ms,
-  // so do not flood it. A 200–500 ms cadence is comfortable.
+  // Output widget demo — the other half of the widget catalog. LED,
+  // Label, Gauge, Graph, and Battery widgets are OUTPUTS (micro:bit -> app):
+  // they never appear in handleWidget() because they don't send SET
+  // messages, they only receive sendValue() updates. The firmware can't
+  // see what you named them in the Build tab (LAYOUT_CFG_BASE64 is an
+  // opaque blob to it), so add a widget of the matching type using one
+  // of the IDs below (or edit the strings here to match yours) to see
+  // it update live once connected. Runs once a second — the rxy app
+  // rate-limits incoming messages to about one per 200 ms, so don't
+  // go faster than that.
   // -----------------------------------------------------------------
-  // static uint32_t lastUpd = 0;
-  // if (gConnected && now - lastUpd > 500) {
-  //   lastUpd = now;
-  //   sendValue("gauge_temp", String((int)temperatureRead()));
-  // }
+  static uint32_t lastOutputDemo = 0;
+  if (gConnected && now - lastOutputDemo >= 1000) {
+    lastOutputDemo = now;
+    static int demoTick = 0;
+    demoTick++;
+    sendValue("led_demo",     (demoTick % 2) ? "1" : "0");             // blinks every tick
+    sendValue("label_demo",   "Tick " + String(demoTick));             // free-text label
+    sendValue("gauge_demo",   String((int)temperatureRead()));         // chip temp in °C
+    sendValue("graph_demo",   String(demoTick % 100) + "," + String((demoTick * 3) % 100));
+    sendValue("battery_demo", String(100 - (demoTick % 100)));         // fake drain 100 -> 0
+  }
 }
