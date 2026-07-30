@@ -18,8 +18,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 PIO_DIR="$SCRIPT_DIR/platformio"
-ACLI_SKETCH_DIR="$SCRIPT_DIR/arduino/microbit_esp32_remote"
-ACLI_SKETCH_FILE="$ACLI_SKETCH_DIR/microbit_esp32_remote.ino"
+ACLI_SKETCH_DIR="$SCRIPT_DIR/arduino/esp32_rxy"
+ACLI_SKETCH_FILE="$ACLI_SKETCH_DIR/esp32_rxy.ino"
 ACLI_BUILD_DIR="$ACLI_SKETCH_DIR/build"
 
 # Board configuration

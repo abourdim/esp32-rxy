@@ -11,8 +11,8 @@ Target board: **ESP32-C3 Super Mini** (any ESP32 with BLE works).
 
 ```
 arduino/
-  microbit_esp32_remote/
-    microbit_esp32_remote.ino      ← open this in Arduino IDE
+  esp32_rxy/
+    esp32_rxy.ino                   ← open this in Arduino IDE
 platformio/
   platformio.ini                   ← PlatformIO project root
   src/main.cpp                     ← identical source as the .ino
@@ -36,7 +36,7 @@ to force ROM-bootloader mode, then immediately upload.
 
 1. Install the **ESP32 by Espressif Systems** board package (Boards Manager).
 2. Install the **NimBLE-Arduino** library (Library Manager → search "NimBLE-Arduino", version 2.x).
-3. Open `arduino/microbit_esp32_remote/microbit_esp32_remote.ino`.
+3. Open `arduino/esp32_rxy/esp32_rxy.ino`.
 4. **Tools → Board** → "ESP32C3 Dev Module" (or your specific ESP32 board).
 5. **Tools → USB CDC On Boot** → "Enabled".
 6. Plug in the board, select the port, click Upload.
