@@ -40,6 +40,7 @@
 #include <NimBLEDevice.h>
 #include <esp_system.h>
 #include <esp_chip_info.h>
+#include <esp_idf_version.h>
 
 // =====================================================================
 //  CONFIGURATION  —  edit this section for your project
@@ -142,8 +143,12 @@ static const char* resetReasonStr(esp_reset_reason_t r) {
     case ESP_RST_DEEPSLEEP: return "DEEPSLEEP wakeup";
     case ESP_RST_BROWNOUT:  return "BROWNOUT";
     case ESP_RST_SDIO:      return "SDIO";
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+    // ESP_RST_USB / ESP_RST_JTAG were added to esp_reset_reason_t in IDF 5.0;
+    // older IDF (e.g. arduino-esp32 2.0.9 on IDF 4.4) doesn't declare them.
     case ESP_RST_USB:       return "USB host reset";
     case ESP_RST_JTAG:      return "JTAG";
+#endif
     default:                return "UNKNOWN";
   }
 }
