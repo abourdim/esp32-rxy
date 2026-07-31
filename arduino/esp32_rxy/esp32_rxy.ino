@@ -40,6 +40,14 @@
  *  micro:bit's convention here because the web app expects it.
  */
 
+// NimBLE's own NIMBLE_LOGE("failed to send value, rc=%d %s", ...) inside
+// notify() is compiled out at the default log level (0 = NONE), which is
+// why every "notify() reported failure" in our own logging never showed
+// *why*. Must be defined before NimBLEDevice.h is included (nimconfig.h
+// only sets its 0 default if these aren't already defined).
+#define CONFIG_NIMBLE_CPP_LOG_LEVEL 1
+#define CONFIG_NIMBLE_CPP_ENABLE_RETURN_CODE_TEXT
+
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <esp_system.h>
@@ -61,9 +69,7 @@ static const char* BLE_DEVICE_NAME = "BBC micro:bit";
 // Paste the base64 layout string from the rxy "📄 Code" button here.
 // The default below is a minimal layout with a single "Test" button.
 static const char* LAYOUT_CFG_BASE64 =
-  "eyJ0aXRsZSI6Ik15IFJlbW90ZSIsIndpZGdldHMiOlt7ImlkIjoiYnRuX3Rlc3"
-  "QiLCJ0IjoiYnV0dG9uIiwieCI6NTAsInkiOjUwLCJ3IjoxMDAsImgiOjEwMCwi"
-  "bGFiZWwiOiJUZXN0IiwibW9kZWwiOiJuZW8ifV19";
+ "eyJ0aXRsZSI6IlN1cGVyIERlbW8gUmVtb3RlIiwid2lkZ2V0cyI6W3siaWQiOiJidG5fanVtcCIsInQiOiJidXR0b24iLCJ4Ijo1MTUsInkiOjE5MCwidyI6MTAwLCJoIjoxMDAsImxhYmVsIjoiSnVtcCEiLCJtb2RlbCI6Im5lbyIsInByb3BzIjp7fX0seyJpZCI6ImJ0bl9maXJlIiwidCI6ImJ1dHRvbiIsIngiOjYzMCwieSI6MTkwLCJ3IjoxMDAsImgiOjEwMCwibGFiZWwiOiJGaXJlISIsIm1vZGVsIjoiZ2xhc3MiLCJwcm9wcyI6e319LHsiaWQiOiJzbGlkZXJfc3BlZWQiLCJ0Ijoic2xpZGVyIiwieCI6MzI1LCJ5IjoxOTAsInciOjgwLCJoIjoxNjAsImxhYmVsIjoiU3BlZWQiLCJtb2RlbCI6InRyYWNrIiwibWluIjowLCJtYXgiOjEwMCwic3RlcCI6MSwicHJvcHMiOnt9fSx7ImlkIjoic2xpZGVyX3Bvd2VyIiwidCI6InNsaWRlciIsIngiOjQyMCwieSI6MTkwLCJ3Ijo4MCwiaCI6MTYwLCJsYWJlbCI6IlBvd2VyIiwibW9kZWwiOiJuZW9uIiwibWluIjowLCJtYXgiOjEwMCwic3RlcCI6MSwicHJvcHMiOnt9fSx7ImlkIjoidG9nZ2xlX3R1cmJvIiwidCI6InRvZ2dsZSIsIngiOjE1MCwieSI6MzY1LCJ3IjoxMDAsImgiOjgwLCJsYWJlbCI6IlR1cmJvIiwibW9kZWwiOiJwaWxsIiwicHJvcHMiOnt9fSx7ImlkIjoidG9nZ2xlX3NoaWVsZCIsInQiOiJ0b2dnbGUiLCJ4IjoyNjUsInkiOjM2NSwidyI6MTAwLCJoIjo4MCwibGFiZWwiOiJTaGllbGQiLCJtb2RlbCI6Imljb24iLCJwcm9wcyI6e319LHsiaWQiOiJsZWRfc3RhdHVzIiwidCI6ImxlZCIsIngiOjQ2NSwieSI6MzY1LCJ3Ijo3MCwiaCI6NzAsImxhYmVsIjoiU3RhdHVzIiwibW9kZWwiOiJkb3QiLCJjb2xvck9uIjoiIzAwZTY3NiIsImNvbG9yT2ZmIjoiIzFiMmEzYSIsInByb3BzIjp7fX0seyJpZCI6ImxlZF9hbGVydCIsInQiOiJsZWQiLCJ4Ijo1NTAsInkiOjM2NSwidyI6NzAsImgiOjcwLCJsYWJlbCI6IkFsZXJ0IiwibW9kZWwiOiJyaW5nIiwiY29sb3JPbiI6IiNmZjUyNTIiLCJjb2xvck9mZiI6IiMxYjJhM2EiLCJwcm9wcyI6e319LHsiaWQiOiJqb3lfbW92ZSIsInQiOiJqb3lzdGljayIsIngiOjc2MCwieSI6MTUsInciOjE0MCwiaCI6MTQwLCJsYWJlbCI6Ik1vdmUiLCJtb2RlbCI6InJpbmciLCJwcm9wcyI6e319LHsiaWQiOiJkcGFkX25hdiIsInQiOiJkcGFkIiwieCI6MTUsInkiOjE5MCwidyI6MTQwLCJoIjoxNDAsImxhYmVsIjoiTmF2aWdhdGUiLCJtb2RlbCI6ImNsYXNzaWMiLCJwcm9wcyI6e319LHsiaWQiOiJsYWJlbF9zY29yZSIsInQiOiJsYWJlbCIsIngiOjc0NSwieSI6MTkwLCJ3IjoxODAsImgiOjUwLCJsYWJlbCI6IlNjb3JlOiAwIiwibW9kZWwiOiJjaGlwIiwicHJvcHMiOnt9fSx7ImlkIjoieHlwYWRfYWltIiwidCI6Inh5cGFkIiwieCI6MTcwLCJ5IjoxOTAsInciOjE0MCwiaCI6MTQwLCJsYWJlbCI6IkFpbSIsIm1vZGVsIjoiZ3JpZCIsInByb3BzIjp7fX0seyJpZCI6ImJhdHRlcnlfbGV2ZWwiLCJ0IjoiYmF0dGVyeSIsIngiOjM4MCwieSI6MzY1LCJ3Ijo3MCwiaCI6MTAwLCJsYWJlbCI6IlBvd2VyIiwibW9kZWwiOiJ2ZXJ0aWNhbCIsInByb3BzIjp7fX0seyJpZCI6InRpbWVyX2dhbWUiLCJ0IjoidGltZXIiLCJ4IjoxNSwieSI6MzY1LCJ3IjoxMjAsImgiOjcwLCJsYWJlbCI6IkdhbWUgVGltZSIsIm1vZGVsIjoiZGlnaXRhbCIsImF1dG9TdGFydCI6ZmFsc2UsInByb3BzIjp7fX0seyJpZCI6ImdhdWdlX3RlbXAiLCJ0IjoiZ2F1Z2UiLCJ4Ijo0NTAsInkiOjE1LCJ3IjoxNDAsImgiOjE2MCwibGFiZWwiOiJUZW1wIiwibWluIjowLCJtYXgiOjUwLCJ1bml0cyI6IsKwQyIsImRlY2ltYWxzIjoxLCJtb2RlbCI6ImNsYXNzaWMiLCJ3YXJuIjpudWxsLCJkYW5nZXIiOm51bGwsInByb3BzIjp7fX0seyJpZCI6ImdhdWdlX2xldmVsIiwidCI6ImdhdWdlIiwieCI6NjA1LCJ5IjoxNSwidyI6MTQwLCJoIjoxNjAsImxhYmVsIjoiTGV2ZWwiLCJtaW4iOjAsIm1heCI6MTAwLCJ1bml0cyI6IiUiLCJkZWNpbWFscyI6MCwibW9kZWwiOiJuZW9uIiwid2FybiI6bnVsbCwiZGFuZ2VyIjpudWxsLCJwcm9wcyI6e319LHsiaWQiOiJncmFwaF9lbnYiLCJ0IjoiZ3JhcGgiLCJ4IjoxNSwieSI6MTUsInciOjQyMCwiaCI6MTUwLCJsYWJlbCI6IkxpdmUgRGF0YSIsInNlcmllcyI6Miwid2luZG93U2VjIjozMCwiYXV0b1NjYWxlIjp0cnVlLCJtb2RlbCI6ImdyaWQiLCJtaW4iOjAsIm1heCI6MTAwLCJzaG93TGVnZW5kIjp0cnVlLCJwcm9wcyI6e319XX0=";
 
 // On the ESP32-C3 Super Mini the on-board blue LED is wired to GPIO 8
 // and is ACTIVE LOW (write LOW to turn it on). Adjust for your board.
@@ -98,7 +104,25 @@ static const int BUTTON_ACTIVE    = LOW;
 // =====================================================================
 static NimBLECharacteristic* gTxChar    = nullptr;
 static volatile bool         gConnected = false;
+// Guards against loop()'s periodic demo output racing sendCfg()'s burst
+// now that both run on the same task (see gGetCfgRequested below) — a
+// real micro:bit's MakeCode firmware does the same with "if (cfgSent)".
+static volatile bool         gSendingCfg = false;
 static String                gRxBuffer;
+
+// Set from onWrite() (NimBLE's own host task), consumed from loop() (the
+// main Arduino task). THIS WAS THE ACTUAL BUG behind the whole rc=6
+// (BLE_HS_ENOMEM) saga: onWrite() used to call sendCfg() directly and
+// synchronously — running the ~900ms/60-notify burst ON NimBLE's host
+// task while still inside its own callback. That blocks the host task
+// from processing its own buffer-completion housekeeping for the whole
+// burst, starving the very pool sendCfg() depends on. It was never the
+// MTU, indicate() vs notify(), connection interval, or the demo loop —
+// isolated testing (see platformio_ble_probe/) proved a 60-packet
+// notify() burst works perfectly (60/60) as long as it runs from
+// loop(), and fails identically to the real firmware the moment it
+// runs from inside a BLE callback instead.
+static volatile bool         gGetCfgRequested = false;
 
 // Forward declarations
 static void handleLine(const String& line);
@@ -118,11 +142,20 @@ static inline void sendValue(const String& id, const String& val) {
 //  BLE callbacks
 // =====================================================================
 class ServerCallbacks : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer* /*server*/, NimBLEConnInfo& info) override {
+  void onConnect(NimBLEServer* server, NimBLEConnInfo& info) override {
     gConnected = true;
     gRxBuffer  = "";
     Serial.printf("[BLE] Client connected  peer=%s\n",
                   info.getAddress().toString().c_str());
+    // Request a fast connection interval (7.5-15ms, units of 1.25ms) so
+    // the controller drains notify()'s buffer pool quickly enough to
+    // survive sendCfg()'s ~60-chunk burst. Left at whatever slower
+    // default the central negotiated, notify() calls pile up faster
+    // than the radio can actually transmit them, exhausting NimBLE's
+    // mbuf pool and causing it to refuse (return false on) most sends
+    // mid-burst — observed as near-universal "dropped" log lines even
+    // though most chunks still trickled through opportunistically.
+    server->updateConnParams(info.getConnHandle(), 6, 12, 0, 400);
   }
   void onDisconnect(NimBLEServer* /*server*/, NimBLEConnInfo& /*info*/, int reason) override {
     gConnected = false;
@@ -182,17 +215,20 @@ class RxCallbacks : public NimBLECharacteristicCallbacks {
 static void sendLine(const String& line) {
   if (!gConnected || gTxChar == nullptr) return;
   String out = line + "\n";
-  // ATOMIC notify: pass the payload directly so each call captures its
-  // own bytes. The two-step setValue() + notify() form races on the
-  // characteristic's internal buffer when called back-to-back from
-  // sendCfg() — NimBLE's async host task can read the buffer AFTER a
-  // newer setValue has overwritten it, collapsing several queued
-  // notifications into the last one. Symptom on rxy: only CFGEND
-  // arrives, everything in between vanishes, JSON.parse('') fails.
+  // Plain NOTIFY, single attempt, no retry, no wait-for-ack. We spent a
+  // long time chasing rc=6 (BLE_HS_ENOMEM) through indicate()+confirm
+  // handshakes, MTU tuning, and connection-interval tweaks — none of it
+  // was the real cause. Isolated testing (platformio_ble_probe/) proved
+  // a 60-packet notify() burst succeeds 100% of the time on this exact
+  // chip/library, as long as it doesn't run from inside a BLE callback
+  // (see gGetCfgRequested and loop() for why that mattered). With the
+  // burst correctly deferred to loop(), plain notify() is reliable and
+  // needs none of the complexity we tried before.
   gTxChar->notify((const uint8_t*)out.c_str(), out.length());
 }
 
 static void sendCfg() {
+  gSendingCfg = true;  // block loop()'s demo output for the whole burst
   sendLine("CFGBEGIN");
   const char* p   = LAYOUT_CFG_BASE64;
   const size_t n  = strlen(p);
@@ -204,6 +240,7 @@ static void sendCfg() {
     delay(15);  // pace notifications so the BLE stack does not drop any
   }
   sendLine("CFGEND");
+  gSendingCfg = false;
   Serial.println("[BLE] Sent CFG");
 }
 
@@ -296,7 +333,11 @@ static void handleLine(const String& line) {
   Serial.print("[RX] ");
   Serial.println(line);
 
-  if (line == "GETCFG") { sendCfg(); return; }
+  // Defer to loop() — do NOT call sendCfg() directly here. handleLine()
+  // runs from onWrite() on NimBLE's own host task; see gGetCfgRequested
+  // for why running the burst synchronously from that task was the
+  // actual bug all along.
+  if (line == "GETCFG") { gGetCfgRequested = true; return; }
 
   if (line.startsWith("SET ")) {
     int sp = line.indexOf(' ', 4);
@@ -469,11 +510,11 @@ void setup() {
   Serial.println("[SETUP] step 2/4 — NimBLEDevice::init");
   NimBLEDevice::init(BLE_DEVICE_NAME);
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-  // Request a larger ATT MTU. Default is 23 bytes (= 20 bytes payload
-  // per notify), which is too small for our 23-byte "CFG <18-char>\n"
-  // lines and would force fragmentation. Centrals negotiate downward
-  // as needed (Chrome on macOS typically lands ~185, phones ~247).
-  NimBLEDevice::setMTU(247);
+  // No explicit setMTU() call — matches a real micro:bit, which never
+  // calls anything like setMTU() either. NimBLE-Arduino's own built-in
+  // default preferred MTU (255, per nimconfig.h) already gives plenty
+  // of room for a 23-byte "CFG <18-char>\n" line, so nothing further
+  // is needed here.
 
   // Match a real micro:bit's MakeCode "No pairing required: anyone can
   // connect via Bluetooth" mode. Explicit, not relying on NimBLE/SDK
@@ -552,6 +593,16 @@ void loop() {
   const uint32_t now = millis();
 
   // -----------------------------------------------------------------
+  // Handle a pending GETCFG here, not from onWrite() — see
+  // gGetCfgRequested for why running the burst directly from the BLE
+  // callback was the actual cause of the CFG-transfer failures.
+  // -----------------------------------------------------------------
+  if (gGetCfgRequested) {
+    gGetCfgRequested = false;
+    sendCfg();
+  }
+
+  // -----------------------------------------------------------------
   // Periodic heartbeat — confirms the firmware is alive and shows
   // connection state + heap headroom. Cheap, prints once every 5 s.
   // -----------------------------------------------------------------
@@ -595,7 +646,7 @@ void loop() {
   // go faster than that.
   // -----------------------------------------------------------------
   static uint32_t lastOutputDemo = 0;
-  if (gConnected && now - lastOutputDemo >= 1000) {
+  if (gConnected && !gSendingCfg && now - lastOutputDemo >= 1000) {
     lastOutputDemo = now;
     static int demoTick = 0;
     demoTick++;

@@ -3,6 +3,7 @@
 
 # PlatformIO
 platformio/.pio/
+platformio_ble_probe/.pio/
 
 # Arduino IDE / arduino-cli
 arduino/**/build/
