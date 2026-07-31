@@ -473,20 +473,24 @@ static void handleLine(const String& line) {
 //   D-Pad     "dpad_..."    val: "<up|down|left|right> <0|1>"
 //   XY Pad    "xypad_..."   val: "<x 0-100> <y 0-100>"
 //   Timer     "timer_..."   val: seconds elapsed (sent ~every 5 s)
+//   Select    "select_..."  val: the chosen option's text
+//   Edit Field "editfield_..." val: whatever text was typed
 //
-// To update an output widget (LED, label, gauge, graph, battery)
-// call sendValue() from anywhere:
+// To update an output widget (LED, label, gauge, graph, battery, sound,
+// notification) call sendValue() from anywhere:
 //
 //   sendValue("led_status",  "1");
 //   sendValue("gauge_temp",  "23");
 //   sendValue("label_score", "Score: 42");
 //   sendValue("graph_data",  "12,7,18");
 //   sendValue("battery_lvl", "75");
+//   sendValue("sound_fx",    "beep");    // beep|success|warn|danger|toggle
+//   sendValue("alert_box",   "Uh oh!");
 //
-// A live, running example of all five is in loop() below (search for
-// "Output widget demo") — add an LED/Label/Gauge/Graph/Battery widget
-// with a matching *_demo ID in the Build tab to see it update once
-// connected.
+// A live, running example of all seven is in loop() below (search for
+// "Output widget demo") — add an LED/Label/Gauge/Graph/Battery/Sound/
+// Notification widget with a matching *_demo ID in the Build tab to see
+// it update once connected.
 //
 // EVERY input widget type below already does something with the one actuator
 // this board has out of the box (the on-board LED) and prints what it
@@ -568,6 +572,22 @@ static void handleWidget(const String& id, const String& val) {
   if (id.startsWith("timer_")) {
     digitalWrite(LED_PIN, digitalRead(LED_PIN) == LED_ON ? LED_OFF : LED_ON);
     Serial.printf("[WIDGET] timer    '%s' = %ds\n", id.c_str(), val.toInt());
+    return;
+  }
+
+  // ------- Select: val is the chosen option's text — LED flips once -------
+  // handleWidget() runs on NimBLE's own host task (see handleLine() above),
+  // so no delay()/blink-then-wait here — just flip state, same as timer_.
+  if (id.startsWith("select_")) {
+    digitalWrite(LED_PIN, digitalRead(LED_PIN) == LED_ON ? LED_OFF : LED_ON);
+    Serial.printf("[WIDGET] select   '%s' = '%s'\n", id.c_str(), val.c_str());
+    return;
+  }
+
+  // ------- Edit Field: val is whatever text was typed — LED flips once ----
+  if (id.startsWith("editfield_")) {
+    digitalWrite(LED_PIN, digitalRead(LED_PIN) == LED_ON ? LED_OFF : LED_ON);
+    Serial.printf("[WIDGET] editfield '%s' = '%s'\n", id.c_str(), val.c_str());
     return;
   }
 }
@@ -766,5 +786,12 @@ void loop() {
     sendValue("gauge_demo",   String((int)temperatureRead()));         // chip temp in °C
     sendValue("graph_demo",   String(demoTick % 100) + "," + String((demoTick * 3) % 100));
     sendValue("battery_demo", String(100 - (demoTick % 100)));         // fake drain 100 -> 0
+    // Sound/Notification are attention-grabbing effects, not continuous
+    // telemetry — fire once every 5 ticks instead of every tick like the
+    // others above, so the demo doesn't spam beeps/banners nonstop.
+    if (demoTick % 5 == 0) {
+      sendValue("sound_demo", "beep");                                 // beep | success | warn | danger | toggle
+      sendValue("notification_demo", "Hello from ESP32!");
+    }
   }
 }
