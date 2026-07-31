@@ -38,6 +38,113 @@
  *  Note: the role of characteristics 0002 / 0003 is the OPPOSITE of the
  *  Nordic UART Service convention used by Adafruit/Bluefruit. We follow the
  *  micro:bit's convention here because the web app expects it.
+ *
+ * =====================================================================
+ *  POST-MORTEM: the GETCFG burst failure (rc=6 / BLE_HS_ENOMEM), and
+ *  everything it took to actually find the fix
+ * =====================================================================
+ *  SYMPTOM
+ *  -------
+ *  Every "Connect" attempt from the web app hung on "Receiving
+ *  layout... (N)" forever. N was suspiciously consistent (often 17 of
+ *  the ~60 real CFG chunks) across firmware rebuilds, reboots, and even
+ *  totally different layouts — a hard, content-independent ceiling,
+ *  not random flakiness. Once return-code logging was added (see
+ *  CONFIG_NIMBLE_CPP_LOG_LEVEL just below), the cause behind that
+ *  ceiling was visible directly: NimBLE's own notify()/indicate() kept
+ *  returning rc=6 (BLE_HS_ENOMEM, "not enough memory") on almost every
+ *  packet of the burst.
+ *
+ *  THINGS THAT LOOKED LIKE THE CAUSE BUT WEREN'T
+ *  ----------------------------------------------
+ *  Each of these was a real, reasoned hypothesis, tested in isolation,
+ *  and ruled out — recorded here so nobody re-chases them later:
+ *
+ *  1. MTU too small / too large. Tried explicit setMTU(247), then
+ *     setMTU(64), then no explicit setMTU() call at all (letting
+ *     NimBLE's own built-in default of 255 stand). All three gave the
+ *     identical rc=6 cascade starting at the identical point. MTU was
+ *     never the variable.
+ *
+ *  2. notify() vs indicate(). Switched the TX characteristic to
+ *     INDICATE, added a real wait-for-ack using the characteristic's
+ *     onStatus() callback (which fires from the genuine asynchronous
+ *     BLE_GAP_EVENT_NOTIFY_TX completion, not just a synchronous
+ *     "was it queued?" guess). Still failed identically — indicate()
+ *     even got nacked outright in some tests, likely because Web
+ *     Bluetooth's startNotifications() only ever enables the notify
+ *     CCCD bit, not indicate, on a dual-property characteristic.
+ *
+ *  3. Retrying on a failed return code. notify()'s bool return turned
+ *     out to be an unreliable signal on this stack in general — it
+ *     sometimes reported failure for packets that still made it over
+ *     the air. Retrying on it was actively harmful: each "failed"
+ *     attempt got physically resent anyway, duplicating chunks (the
+ *     app's received count was observed exceeding the real total).
+ *
+ *  4. Connection interval too slow to drain the send queue. Added an
+ *     explicit NimBLEServer::updateConnParams() request for a fast
+ *     7.5–15ms interval on connect. No change.
+ *
+ *  5. The periodic demo-output loop racing the CFG burst. loop()'s
+ *     once-a-second UPD sends (led_demo, gauge_demo, etc.) run on a
+ *     different task than a BLE write callback; added gSendingCfg to
+ *     gate them off for the duration of a transfer. Legitimate
+ *     hygiene, kept in the fix — but not what was causing rc=6.
+ *
+ *  6. Arduino-ESP32 core / BLE controller version. The default-
+ *     resolved core (2.0.9, IDF 4.4) has a BLE controller config with
+ *     CONFIG_BT_CTRL_BLE_STATIC_ACL_TX_BUF_NB=0, which looked like a
+ *     smoking gun. Tested against a newer core (2.0.14, IDF 5.x) — same
+ *     rc=6 cascade, and the same config value turned out to be present
+ *     on BOTH core versions. Red herring.
+ *
+ *  THE ISOLATION TEST THAT ACTUALLY FOUND IT
+ *  ------------------------------------------
+ *  After six independent, well-reasoned fixes all failed identically,
+ *  continuing to patch the full ~700-line application stopped being
+ *  productive. Instead, a separate minimal PlatformIO project was
+ *  built (platformio_ble_probe/ in this repo) that talks to the same
+ *  GATT service but with no CFG protocol, no demo loop, no app logic
+ *  at all — just "on connect, blast N small notify() calls."
+ *
+ *  - v1 (arbitrary payload, burst fired from loop() on a 1s timer
+ *    after connect): 60/60 succeeded. The chip and library are fine.
+ *  - v2 (real CFG payload and CFGBEGIN/CFG/CFGEND framing, burst fired
+ *    from inside the RX characteristic's onWrite() callback in
+ *    response to a real "GETCFG" write — i.e. structured exactly like
+ *    this firmware): failed identically, stalling at 17/60 with rc=6.
+ *  - v2 again, with the ONLY change being: onWrite() sets a flag
+ *    instead of calling the burst function directly, and loop() reads
+ *    that flag and runs the burst itself: 60/60 succeeded.
+ *
+ *  THE ACTUAL ROOT CAUSE
+ *  ----------------------
+ *  RxCallbacks::onWrite() runs on NimBLE's own host task. The old code
+ *  called sendCfg() — a ~900ms loop of 60 notify() calls with delay(15)
+ *  between them — directly from inside that callback, meaning the BLE
+ *  host task was still "inside" our own code for the whole burst. That
+ *  blocked the host task from returning to its own event loop to
+ *  process buffer-completion housekeeping (freeing send buffers as the
+ *  controller reports they've actually gone out over the air) for the
+ *  entire ~900ms — so the pool never had a chance to drain, and every
+ *  notify() past the first handful failed with ENOMEM. This is a
+ *  well-known class of bug in event-driven / RTOS systems generally:
+ *  never do slow, blocking work synchronously inside a callback that
+ *  runs on a thread you also depend on to make forward progress.
+ *
+ *  THE FIX
+ *  -------
+ *  handleLine() no longer calls sendCfg() when it sees "GETCFG" — it
+ *  only sets gGetCfgRequested = true. loop() (running on the ordinary
+ *  Arduino main task, not NimBLE's host task) checks that flag once per
+ *  iteration and runs sendCfg() from there instead. The BLE host task
+ *  is now completely free during the burst to do its own bookkeeping
+ *  concurrently, so the buffer pool never starves. Plain NOTIFY (no
+ *  indicate, no retry, no wait-for-ack machinery) is reliable once the
+ *  burst runs from the right task — none of the complexity from
+ *  hypotheses 2–4 above was ever actually needed.
+ * =====================================================================
  */
 
 // NimBLE's own NIMBLE_LOGE("failed to send value, rc=%d %s", ...) inside
