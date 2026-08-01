@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The GETCFG burst bug — full debugging story</title>
+<style>
+  :root {
+    --bg: #fafaf7;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --accent: #b4451e;
+    --ok: #2a7a2a;
+    --warn: #b48a00;
+    --err: #a02020;
+    --info: #2a5a8a;
+    --rule: #d8d4cc;
+    --code-bg: #f0ece4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font: 15.5px/1.6 -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    color: var(--fg); background: var(--bg);
+    max-width: 900px; margin: 2.2em auto; padding: 0 1.4em 4em 1.4em;
+  }
+  h1 { font-size: 1.9em; margin: 0 0 .1em 0; }
+  h1 + .sub { color: var(--muted); margin: 0 0 1.8em 0; font-size: 1em; }
+  h2 {
+    margin: 2.4em 0 .6em 0; padding-bottom: .35em;
+    border-bottom: 2px solid var(--rule); font-size: 1.32em;
+  }
+  h3 { margin: 1.4em 0 .4em 0; font-size: 1.06em; color: var(--accent); }
+  code {
+    font: 13px/1.4 "SF Mono", Menlo, Consolas, monospace;
+    background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+  }
+  pre {
+    font: 12.5px/1.5 "SF Mono", Menlo, Consolas, monospace;
+    background: var(--code-bg); padding: .9em 1.1em; border-radius: 6px;
+    overflow-x: auto; border: 1px solid var(--rule);
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: .7em 0 1.2em 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: .5em .7em; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  .tag {
+    display: inline-block; font-size: 11.5px; font-weight: 700;
+    padding: 2px 8px; border-radius: 10px; vertical-align: 2px;
+    margin-right: .4em; color: #fff; white-space: nowrap;
+  }
+  .tag.ok { background: var(--ok); }
+  .tag.warn { background: var(--warn); }
+  .tag.err { background: var(--err); }
+  .tag.info { background: var(--info); }
+  .note { border-left: 4px solid var(--info); padding: .6em 1em; margin: .8em 0; background: #eef4fa; border-radius: 0 5px 5px 0; }
+  .warn { border-left: 4px solid var(--warn); padding: .6em 1em; margin: .8em 0; background: #fff9e6; border-radius: 0 5px 5px 0; }
+  .err { border-left: 4px solid var(--err); padding: .6em 1em; margin: .8em 0; background: #fdebeb; border-radius: 0 5px 5px 0; }
+  .ok-box { border-left: 4px solid var(--ok); padding: .6em 1em; margin: .8em 0; background: #eef8ee; border-radius: 0 5px 5px 0; }
+  ul, ol { padding-left: 1.5em; }
+  li { margin: .3em 0; }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 2.4em 0; }
+
+  /* Timeline of ruled-out hypotheses */
+  .timeline { list-style: none; padding: 0; margin: 1em 0; counter-reset: step; }
+  .timeline > li {
+    position: relative; padding: .9em 1.1em .9em 3.1em; margin: 0 0 .7em 0;
+    background: #fff; border: 1px solid var(--rule); border-radius: 8px;
+  }
+  .timeline > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: .8em; top: .8em;
+    width: 1.6em; height: 1.6em; border-radius: 50%;
+    background: var(--err); color: #fff; font-weight: 700;
+    font-size: .85em; display: flex; align-items: center; justify-content: center;
+  }
+  .timeline > li.win::before { background: var(--ok); content: "✓"; }
+  .timeline h4 { margin: 0 0 .3em 0; font-size: 1em; }
+  .timeline .result { font-size: .93em; color: var(--muted); margin-top: .4em; }
+
+  .before-after { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; margin: 1em 0; }
+  .before-after > div { border: 1px solid var(--rule); border-radius: 6px; padding: .8em 1em; }
+  .before-after h4 { margin: 0 0 .5em 0; font-size: .95em; }
+  .before-after .before h4 { color: var(--err); }
+  .before-after .after h4 { color: var(--ok); }
+  @media (max-width: 640px) { .before-after { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>The GETCFG burst bug</h1>
+<p class="sub">
+  How the ESP32 <a href="https://github.com/abourdim/esp32-rxy">esp32-rxy</a>
+  firmware's Bluetooth layout transfer stalled forever, why six reasonable
+  fixes didn't work, and what actually fixed it.
+  Fixed in <a href="https://github.com/abourdim/esp32-rxy/commit/cdaac4f">cdaac4f</a>.
+</p>
+
+<h2>The symptom</h2>
+<p>
+  The <a href="https://abourdim.github.io/bit-rxy/">bit-rxy</a> web app connects
+  to the ESP32 over Bluetooth, sends <code>GETCFG</code>, and expects the
+  firmware to stream back the remote's layout as ~60 small <code>CFG</code>
+  chunks followed by <code>CFGEND</code>. Instead, the app's loading overlay
+  hung forever on <code>Receiving layout... (N)</code> — and <code>N</code> kept
+  landing on the same number, over and over, no matter what changed.
+</p>
+<div class="warn">
+  <strong>The tell:</strong> a hard, content-independent ceiling — often exactly
+  17 of the ~60 chunks — reproduced across firmware rebuilds, reboots, and even
+  completely different layouts. That kind of exact repeatability usually means a
+  structural bug, not random radio flakiness.
+</div>
+<p>
+  Turning on NimBLE's own internal error logging
+  (<code>CONFIG_NIMBLE_CPP_LOG_LEVEL</code>) showed the mechanism directly:
+  the firmware's own <code>notify()</code>/<code>indicate()</code> calls were
+  returning <code>rc=6</code> — <code>BLE_HS_ENOMEM</code>, "not enough
+  memory" — on almost every packet of the burst.
+</p>
+
+<h2>Six reasonable fixes that didn't work</h2>
+<p>
+  Each of these was a genuine, well-supported hypothesis for what could cause
+  a Bluetooth stack to run out of send buffers mid-burst. Each was implemented,
+  tested on real hardware, and ruled out in turn.
+</p>
+
+<ol class="timeline">
+  <li>
+    <h4>MTU too small (or too large)</h4>
+    <p>The default BLE MTU (23 bytes, ~20 usable) is barely too small for a
+    23-byte <code>CFG &lt;18-char&gt;\n</code> line. Requested a larger MTU
+    via <code>setMTU(247)</code>.</p>
+    <p class="result"><strong>Result:</strong> identical <code>rc=6</code> cascade,
+    starting at the identical chunk. Tried <code>setMTU(64)</code> instead — same
+    result. Tried no explicit <code>setMTU()</code> call at all, letting
+    NimBLE's own built-in default (255) stand — same result again. MTU was
+    never the variable.</p>
+  </li>
+
+  <li>
+    <h4><code>notify()</code> vs <code>indicate()</code></h4>
+    <p>Indications get acknowledged by the central; notifications don't.
+    Switched the TX characteristic to <code>INDICATE</code> and added a real
+    wait for the acknowledgment via NimBLE's <code>onStatus()</code> callback
+    — which fires from the actual asynchronous
+    <code>BLE_GAP_EVENT_NOTIFY_TX</code> completion event, not just a
+    synchronous "did the call queue?" guess.</p>
+    <p class="result"><strong>Result:</strong> failed identically. Some
+    packets even came back explicitly <em>nacked</em> — most likely because
+    Web Bluetooth's <code>startNotifications()</code> only ever enables the
+    <em>notify</em> bit in the CCCD, not <em>indicate</em>, even on a
+    characteristic that supports both.</p>
+  </li>
+
+  <li>
+    <h4>Retrying failed sends</h4>
+    <p><code>notify()</code>'s boolean return value seemed like a reasonable
+    thing to check and retry on when it reported failure.</p>
+    <p class="result"><strong>Result:</strong> actively harmful. The return
+    value turned out to be an unreliable signal on this stack — some packets
+    it reported as "failed" had actually gone out over the air anyway.
+    Retrying on it re-sent already-delivered chunks, and the app's own
+    received-chunk counter was observed exceeding the real total (duplicate
+    data corrupting the stream).</p>
+  </li>
+
+  <li>
+    <h4>Connection interval too slow to drain the queue</h4>
+    <p>If the negotiated BLE connection interval is too long, the radio can't
+    physically transmit queued packets fast enough to free up send buffers.
+    Requested a fast 7.5–15&nbsp;ms interval via
+    <code>NimBLEServer::updateConnParams()</code> right on connect.</p>
+    <p class="result"><strong>Result:</strong> no change.</p>
+  </li>
+
+  <li>
+    <h4>The demo-output loop racing the CFG burst</h4>
+    <p>The firmware's <code>loop()</code> pushes periodic demo values
+    (<code>led_demo</code>, <code>gauge_demo</code>, …) once a second. Since
+    that runs on a different task than the code handling an incoming BLE
+    write, it seemed plausible the two were colliding on the same
+    characteristic mid-burst. Added a <code>gSendingCfg</code> flag to gate
+    the demo output off for the duration of a transfer.</p>
+    <p class="result"><strong>Result:</strong> good hygiene, kept in the final
+    fix — but not what was causing <code>rc=6</code>.</p>
+  </li>
+
+  <li>
+    <h4>Arduino-ESP32 core / BLE controller version</h4>
+    <p>The default-resolved core (2.0.9, based on ESP-IDF 4.4) ships a BLE
+    controller build with
+    <code>CONFIG_BT_CTRL_BLE_STATIC_ACL_TX_BUF_NB=0</code> — zero static ACL
+    transmit buffers. That looked like a smoking gun. Pinned the build to a
+    newer core (2.0.14, IDF 5.x) to test.</p>
+    <p class="result"><strong>Result:</strong> same <code>rc=6</code> cascade —
+    and the exact same config value turned out to be present on <em>both</em>
+    core versions. Red herring. (The version pin was kept anyway, since it's
+    the combination the firmware is now actually tested against.)</p>
+  </li>
+</ol>
+
+<h2>Stepping back: an isolated test</h2>
+<p>
+  After six independently reasoned fixes all failed in exactly the same way,
+  continuing to patch the ~700-line application stopped being productive.
+  The next step was to stop guessing inside the full app and build a
+  <a href="https://github.com/abourdim/esp32-rxy/tree/main/platformio_ble_probe"><code>platformio_ble_probe/</code></a>
+  — a separate, minimal PlatformIO project with no CFG protocol, no demo
+  loop, no app logic at all. Just: on connect, blast some small
+  <code>notify()</code> calls, and log exactly what happens.
+</p>
+
+<table>
+<tr><th>Test</th><th>What it did</th><th>Result</th></tr>
+<tr>
+  <td><strong>Probe v1</strong></td>
+  <td>Arbitrary 18-byte payloads, burst fired from <code>loop()</code> on a
+      1-second timer after connect.</td>
+  <td><span class="tag ok">60 / 60</span> succeeded. The chip and the library
+      are fine on their own.</td>
+</tr>
+<tr>
+  <td><strong>Probe v2</strong></td>
+  <td>Real CFG payload and <code>CFGBEGIN</code>/<code>CFG</code>/<code>CFGEND</code>
+      framing, burst fired from inside the RX characteristic's
+      <code>onWrite()</code> callback in response to a real
+      <code>"GETCFG"</code> write — structured exactly like the real
+      firmware.</td>
+  <td><span class="tag err">17 / 60</span> — failed identically to the real
+      firmware, rc=6 and all.</td>
+</tr>
+<tr>
+  <td><strong>Probe v2, one change</strong></td>
+  <td>Same as above, except <code>onWrite()</code> now just sets a flag, and
+      <code>loop()</code> reads that flag and runs the burst itself.</td>
+  <td><span class="tag ok">60 / 60</span> succeeded.</td>
+</tr>
+</table>
+
+<div class="ok-box">
+  That one variable — <em>which task the burst runs from</em> — was the whole
+  bug. Nothing about MTU, notify/indicate, retries, connection interval, or
+  core version ever mattered.
+</div>
+
+<h2>The actual root cause</h2>
+<p>
+  <code>RxCallbacks::onWrite()</code> — the function that reacts to an
+  incoming BLE write, i.e. the app's <code>GETCFG</code> — runs on
+  <strong>NimBLE's own host task</strong>, not the ordinary Arduino
+  <code>loop()</code> task. The original code called <code>sendCfg()</code>
+  directly from inside that callback: a ~900&nbsp;ms loop of 60
+  <code>notify()</code> calls, each followed by a 15&nbsp;ms
+  <code>delay()</code>.
+</p>
+<p>
+  That meant the BLE host task was still "inside" the app's own code for the
+  entire burst. It never got a chance to return to its own event loop and
+  process its own buffer-completion housekeeping — freeing send buffers once
+  the radio confirms a packet has actually gone out over the air. With that
+  housekeeping blocked for 900&nbsp;ms straight, the buffer pool had no way to
+  drain, and every <code>notify()</code> past the first handful failed with
+  <code>ENOMEM</code>.
+</p>
+<div class="note">
+  This is a well-known class of bug in event-driven and RTOS-based systems in
+  general: <strong>never do slow, blocking work synchronously inside a
+  callback that runs on a task you also depend on to make forward
+  progress.</strong> The callback and the resource it starves were the same
+  task — so nothing could ever recover on its own.
+</div>
+
+<h2>The fix</h2>
+<div class="before-after">
+  <div class="before">
+    <h4>Before</h4>
+    <pre><code>// runs on NimBLE's host task
+if (line == "GETCFG") {
+  sendCfg();   // blocks the host
+  return;
+}</code></pre>
+  </div>
+  <div class="after">
+    <h4>After</h4>
+    <pre><code>// runs on NimBLE's host task
+if (line == "GETCFG") {
+  gGetCfgRequested = true;
+  return;       // returns immediately
+}
+
+// runs on the main Arduino task
+void loop() {
+  if (gGetCfgRequested) {
+    gGetCfgRequested = false;
+    sendCfg();  // host task is free
+  }
+  ...
+}</code></pre>
+  </div>
+</div>
+<p>
+  <code>handleLine()</code> no longer calls <code>sendCfg()</code> when it
+  sees <code>GETCFG</code> — it just sets a flag. <code>loop()</code>, running
+  on the ordinary Arduino main task, checks that flag once per iteration and
+  runs the burst from there instead. The BLE host task is now completely free
+  during the whole transfer to do its own bookkeeping concurrently, so the
+  buffer pool never starves.
+</p>
+<p>
+  With that fixed, plain <code>NOTIFY</code> — no <code>indicate()</code>, no
+  retry loop, no wait-for-ack machinery — turned out to be perfectly reliable.
+  None of the complexity from hypotheses 2–4 above was ever actually needed;
+  it was all working around a symptom of the real bug rather than the bug
+  itself.
+</p>
+
+<h2>Lessons</h2>
+<ul>
+  <li><strong>A deterministic, content-independent failure point is a
+    structural clue, not noise.</strong> The same "17 of 60" recurring across
+    completely different test conditions was the strongest signal in the
+    whole investigation — worth trusting earlier.</li>
+  <li><strong>Enable the library's own error logging before guessing.</strong>
+    <code>CONFIG_NIMBLE_CPP_LOG_LEVEL</code> turned "notify failed, no idea
+    why" into an exact, real error code — the single most useful step in the
+    whole process, and it should have come first.</li>
+  <li><strong>A return value isn't proof of delivery, and isn't proof of
+    failure.</strong> <code>notify()</code>'s boolean result was demonstrably
+    wrong in both directions on this stack. Don't build retry logic on a
+    signal you haven't independently verified.</li>
+  <li><strong>When several independent, well-reasoned fixes all fail
+    identically, stop patching the full application.</strong> Build the
+    smallest possible thing that can reproduce the bug in isolation. The
+    probe found in minutes what six rounds of in-app changes couldn't.</li>
+  <li><strong>Never block inside a callback that runs on a task you depend
+    on.</strong> If a callback needs to do slow work, hand it off (a flag, a
+    queue, a semaphore) to a different task instead of doing the work
+    in-place.</li>
+</ul>
+
+<hr>
+<p class="muted" style="font-size:13px">
+  Full code-level account of this fix lives in the header comment of
+  <a href="https://github.com/abourdim/esp32-rxy/blob/main/platformio/src/main.cpp">main.cpp</a>.
+  This page is the narrative version.
+</p>
+
+</body>
+</html>
